@@ -147,7 +147,7 @@ typedef enum XUD_Result
  *                      Valid values are XUD_PWR_SELF and XUD_PWR_BUS.
  *
  */
-int XUD_Main(/*tileref * unsafe usbtileXUD_res_t &xudres, */
+void XUD_Main(/*tileref * unsafe usbtileXUD_res_t &xudres, */
                 chanend c_epOut[], int noEpOut,
                 chanend c_epIn[], int noEpIn,
                 NULLABLE_RESOURCE(chanend, c_sof),
@@ -432,7 +432,7 @@ inline int XUD_SetReady_OutPtr(XUD_ep ep, unsigned addr)
     return XUD_RES_OKAY;
 }
 
-#if defined(__XC__) || defined(__DOXYGEN__)
+
 /**
  * \brief      Marks an IN endpoint as ready to transmit data
  * \param      ep          The IN endpoint identifier (created by ``XUD_InitEp``).
@@ -451,14 +451,18 @@ inline XUD_Result_t XUD_SetReady_InPtr(XUD_ep ep, unsigned addr, int len)
     int reset;
 
     /* Firstly check if we have missed a USB reset - endpoint may not want to send out old data after a reset */
-    asm ("ldw %0, %1[9]":"=r"(reset):"r"(ep));
+    asm volatile("ldw %0, %1[9]":"=r"(reset):"r"(ep));
     if(reset)
     {
         return XUD_RES_RST;
     }
 
     /* Tail length bytes to bits */
+#ifdef __XC__
     tailLength = zext((len << 3),5);
+#else
+    tailLength = (len << 3) & 0x1F;
+#endif
 
     /* Datalength (bytes) --> datalength (words) */
     wordLength = len >> 2;
@@ -469,29 +473,29 @@ inline XUD_Result_t XUD_SetReady_InPtr(XUD_ep ep, unsigned addr, int len)
         wordLength = wordLength - 1;
         tailLength = 32;
     }
-    
+
     /* Get end off buffer address */
-    asm ("add %0, %1, %2":"=r"(tmp):"r"(addr),"r"(wordLength << 2));
+    asm volatile("add %0, %1, %2":"=r"(tmp):"r"(addr),"r"(wordLength << 2));
 
     /* Produce negative offset from end of buffer */
-    asm ("neg %0, %1":"=r"(tmp2):"r"(wordLength));
+    asm volatile("neg %0, %1":"=r"(tmp2):"r"(wordLength));
 
     /* Store neg index */
-    asm ("stw %0, %1[6]"::"r"(tmp2),"r"(ep));
+    asm volatile("stw %0, %1[6]"::"r"(tmp2),"r"(ep));
 
     /* Store buffer pointer */
-    asm ("stw %0, %1[3]"::"r"(tmp),"r"(ep));
+    asm volatile("stw %0, %1[3]"::"r"(tmp),"r"(ep));
 
     /*  Store tail len */
-    asm ("stw %0, %1[7]"::"r"(tailLength),"r"(ep));
+    asm volatile("stw %0, %1[7]"::"r"(tailLength),"r"(ep));
 
     /* Finally, mark ready */
-    asm ("ldw %0, %1[0]":"=r"(chan_array_ptr):"r"(ep));
-    asm ("stw %0, %1[0]"::"r"(ep),"r"(chan_array_ptr));
+    asm volatile("ldw %0, %1[0]":"=r"(chan_array_ptr):"r"(ep));
+    asm volatile("stw %0, %1[0]"::"r"(ep),"r"(chan_array_ptr));
 
     return XUD_RES_OKAY;
 }
-
+#if defined(__XC__) || defined(__DOXYGEN__)
 /**
  * \brief   Marks an IN endpoint as ready to transmit data
  * \param   ep          The IN endpoint identifier (created by ``XUD_InitEp``).
